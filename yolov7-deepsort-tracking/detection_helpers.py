@@ -19,7 +19,7 @@ class Detector:
         save_conf: whether to save confidences in 'save_txt' labels afters inference
         classes: Filter by class from COCO. can be in the format [0] or [0,1,2] etc
         '''
-        self.device = select_device("cuda:0" if torch.cuda.is_available() else 'cpu')
+        self.device = select_device("0" if torch.cuda.is_available() else 'cpu')
         self.conf_thres = conf_thres
         self.iou_thres = iou_thresh
         self.classes = classes
