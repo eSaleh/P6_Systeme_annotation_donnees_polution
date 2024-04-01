@@ -344,11 +344,6 @@ class YOLOv7_DeepSORT_projet_classification:
             
             if output: out.write(result) # save output video
 
-            if show_live:
-                cv2.imshow("Output Video", result)
-                if cv2.waitKey(1) & 0xFF == ord('q'): break
-        
-        cv2.destroyAllWindows()
 
         return json_object_tracking,json_passageornot,delta_time
 
