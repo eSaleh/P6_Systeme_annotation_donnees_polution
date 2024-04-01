@@ -233,6 +233,7 @@ class YOLOv7_DeepSORT_projet_classification:
             out = cv2.VideoWriter(output, codec, fps, (width, height))
         delta_time = (skip_frames+1)/fps
         frame_num = 0
+        back_sub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
         while True: # while video is running
             return_value, frame = vid.read()
             if not return_value:
@@ -243,8 +244,11 @@ class YOLOv7_DeepSORT_projet_classification:
             if skip_frames and not frame_num % skip_frames: continue # skip every nth frame. When every frame is not important, you can use this to fasten the process
             if verbose >= 1:start_time = time.time()
 
+            # Apply background subtraction
+            fg_mask = back_sub.apply(frame)
+
             # -----------------------------------------PUT ANY DETECTION MODEL HERE -----------------------------------------------------------------
-            yolo_dets = self.detector.detect(frame.copy(), plot_bb = False)  # Get the detections
+            yolo_dets = self.detector.detect(fg_mask.copy(), plot_bb = False)  # Get the detections
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             if yolo_dets is None:
@@ -367,7 +371,7 @@ class YOLOv8_DeepSORT_projet_classification:
         self.tracker = Tracker(metric) # initialize tracker
 
 
-    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, verbose:int = 0):
+    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, substract_background=False, verbose:int = 0):
         '''
         Track any given webcam or video
         args: 
