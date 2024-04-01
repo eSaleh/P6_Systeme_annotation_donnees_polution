@@ -14,6 +14,12 @@ if len(physical_devices) > 0:
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from ultralytics import YOLO
+
+from ultralytics.utils.checks import check_imshow
+from ultralytics.utils.plotting import Annotator, colors
+
+from collections import defaultdict
 
 from tensorflow.compat.v1 import ConfigProto # DeepSORT official implementation uses tf1.x so we have to do some modifications to avoid errors
 
@@ -333,5 +339,109 @@ class YOLOv7_DeepSORT_projet_classification:
                 if cv2.waitKey(1) & 0xFF == ord('q'): break
         
         cv2.destroyAllWindows()
+
+        return json_object_tracking,json_passageornot,delta_time
+
+class YOLOv8_DeepSORT_projet_classification:
+    '''
+    Class to Wrap ANY detector  of YOLO type with DeepSORT
+    '''
+    def __init__(self, reID_model_path:str, max_cosine_distance:float=0.4, nn_budget:float=None, nms_max_overlap:float=1.0,
+    coco_names_path:str ="./io_data/input/classes/coco.names",  ):
+        '''
+        args: 
+            reID_model_path: Path of the model which uses generates the embeddings for the cropped area for Re identification
+            detector: object of YOLO models or any model which gives you detections as [x1,y1,x2,y2,scores, class]
+            max_cosine_distance: Cosine Distance threshold for "SAME" person matching
+            nn_budget:  If not None, fix samples per class to at most this number. Removes the oldest samples when the budget is reached.
+            nms_max_overlap: Maximum NMs allowed for the tracker
+            coco_file_path: File wich contains the path to coco naames
+        '''
+        self.coco_names_path = coco_names_path
+        self.nms_max_overlap = nms_max_overlap
+        self.class_names = read_class_names()
+
+        # initialize deep sort
+        self.encoder = create_box_encoder(reID_model_path, batch_size=1)
+        metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget) # calculate cosine distance metric
+        self.tracker = Tracker(metric) # initialize tracker
+
+
+    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, verbose:int = 0):
+        '''
+        Track any given webcam or video
+        args: 
+            video: path to input video or set to 0 for webcam
+            output: path to output video
+            skip_frames: Skip every nth frame. After saving the video, it'll have very visuals experience due to skipped frames
+            show_live: Whether to show live video tracking. Press the key 'q' to quit
+            count_objects: count objects being tracked on screen
+            verbose: print details on the screen allowed values 0,1,2
+        '''
+        track_history = defaultdict(lambda: [])
+        model = YOLO("yolov8n.pt")
+        names = model.model.names
+        try: # begin video capture
+            vid = cv2.VideoCapture(int(video))
+        except:
+            vid = cv2.VideoCapture(video)
+
+        out = None
+        if output: # get video ready to save locally if flag is set
+            width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))  # by default VideoCapture returns float instead of int
+            height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = int(vid.get(cv2.CAP_PROP_FPS))
+            codec = cv2.VideoWriter_fourcc(*"XVID")
+            out = cv2.VideoWriter(output, codec, fps, (width, height))
+        delta_time = (skip_frames+1)/fps
+        frame_num = 0
+        while True: # while video is running
+            return_value, frame = vid.read()
+            if not return_value:
+                print('Video has ended or failed!')
+                break
+            frame_num +=1
+
+            if skip_frames and not frame_num % skip_frames: continue # skip every nth frame. When every frame is not important, you can use this to fasten the process
+            if verbose >= 1:start_time = time.time()
+
+            # -----------------------------------------PUT ANY DETECTION MODEL HERE -----------------------------------------------------------------
+            results = model.track(frame, persist=True, verbose=False)
+            boxes = results[0].boxes.xyxy.cpu()
+            # See what elements have been seen in the current frame
+            json_passageornot[frame_num]=[]
+
+            if results[0].boxes.id is not None:
+
+                # Extract prediction results
+                clss = results[0].boxes.cls.cpu().tolist()
+                track_ids = results[0].boxes.id.int().cpu().tolist()
+                confs = results[0].boxes.conf.float().cpu().tolist()
+
+                # Annotator Init
+                annotator = Annotator(frame, line_width=2)
+
+                for box, cls, track_id in zip(boxes, clss, track_ids):
+
+                    if track_id not in json_object_tracking.keys(): # check if object hasn't already been tracked before, yes = create directory
+                        json_object_tracking[int(track_id)]={}
+                    json_passageornot[frame_num].append(int(track_id))
+
+                    annotator.box_label(box, color=colors(int(cls), True), label=names[int(cls)])
+
+                    # Store tracking history
+                    track = track_history[track_id]
+                    track.append((int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2)))
+                    if len(track) > 30:
+                        track.pop(0)
+
+                    # Plot tracks
+                    points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
+                    cv2.circle(frame, (track[-1]), 7, colors(int(cls), True), -1)
+                    cv2.polylines(frame, [points], isClosed=False, color=colors(int(cls), True), thickness=2)
+
+                    json_object_tracking[int(track_id)][frame_num]=[int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2),box[0]-box[2],box[3]-box[1],names[int(cls)]]
+
+            out.write(frame)
 
         return json_object_tracking,json_passageornot,delta_time
