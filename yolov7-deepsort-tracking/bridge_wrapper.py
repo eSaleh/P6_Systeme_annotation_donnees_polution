@@ -187,7 +187,7 @@ class YOLOv7_DeepSORT_projet_classification:
     Class to Wrap ANY detector  of YOLO type with DeepSORT
     '''
     def __init__(self, reID_model_path:str, detector, max_cosine_distance:float=0.4, nn_budget:float=None, nms_max_overlap:float=1.0,
-    coco_names_path:str ="./io_data/input/classes/coco.names",  ):
+    coco_names_path:str ="./io_data/input/classes/coco.names",):
         '''
         args: 
             reID_model_path: Path of the model which uses generates the embeddings for the cropped area for Re identification
@@ -208,7 +208,7 @@ class YOLOv7_DeepSORT_projet_classification:
         self.tracker = Tracker(metric) # initialize tracker
 
 
-    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, verbose:int = 0):
+    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, verbose:int = 0 ,background_reduction=False):
         '''
         Track any given webcam or video
         args: 
@@ -244,11 +244,17 @@ class YOLOv7_DeepSORT_projet_classification:
             if skip_frames and not frame_num % skip_frames: continue # skip every nth frame. When every frame is not important, you can use this to fasten the process
             if verbose >= 1:start_time = time.time()
 
-            # Apply background subtraction
-            fg_mask = back_sub.apply(frame)
 
             # -----------------------------------------PUT ANY DETECTION MODEL HERE -----------------------------------------------------------------
-            yolo_dets = self.detector.detect(fg_mask.copy(), plot_bb = False)  # Get the detections
+            if background_reduction:
+                # Apply background subtraction
+                fg_mask = back_sub.apply(frame)
+
+                
+                yolo_dets = self.detector.detect(fg_mask.copy(), plot_bb = False)  # Get the detections
+            else : 
+                yolo_dets = self.detector.detect(frame.copy(), plot_bb = False)  # Get the detections
+            
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             if yolo_dets is None:
@@ -371,7 +377,7 @@ class YOLOv8_DeepSORT_projet_classification:
         self.tracker = Tracker(metric) # initialize tracker
 
 
-    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, substract_background=False, verbose:int = 0):
+    def track_video(self,video:str, output:str, skip_frames:int=0, show_live:bool=False, count_objects:bool=False, substract_background=False, verbose:int = 0,background_reduction=False):
         '''
         Track any given webcam or video
         args: 
@@ -409,8 +415,17 @@ class YOLOv8_DeepSORT_projet_classification:
             if skip_frames and not frame_num % skip_frames: continue # skip every nth frame. When every frame is not important, you can use this to fasten the process
             if verbose >= 1:start_time = time.time()
 
-            # -----------------------------------------PUT ANY DETECTION MODEL HERE -----------------------------------------------------------------
-            results = model.track(frame, persist=True, verbose=False)
+           # -----------------------------------------PUT ANY DETECTION MODEL HERE -----------------------------------------------------------------
+            back_sub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
+            if background_reduction:
+                # Apply background subtraction
+                fg_mask = back_sub.apply(frame)
+
+                results = model.track(fg_mask, persist=True, verbose=False)  # Get the detections
+            else : 
+                results = model.track(frame, persist=True, verbose=False)  # Get the detections
+
+            #results = model.track(frame, persist=True, verbose=False)
             boxes = results[0].boxes.xyxy.cpu()
             # See what elements have been seen in the current frame
             json_passageornot[frame_num]=[]
