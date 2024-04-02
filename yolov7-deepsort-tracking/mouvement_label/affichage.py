@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
+import seaborn as sns
+from datetime import datetime, timedelta,timezone
+from scipy.signal import find_peaks,argrelextrema
 
 def objet_mouvement(data_json,frames_json):
     plt.figure(figsize=(15, len(data_json)*3))
@@ -94,3 +97,50 @@ def graph_nb(nb,date):
 
     # Show figure
     fig.show()
+
+def graphe_capteurs(df,indicateur="pm2_5"):
+    fig = go.Figure()
+    for capteur in df["sensorId"].unique():
+        capteur_name=str(capteur)
+        if not (capteur_name.endswith("18") or capteur_name.endswith("75")): 
+            fig.add_trace(go.Scatter(x=df[df["sensorId"]==capteur]['Date'], y=df[df["sensorId"]==capteur][indicateur], mode='lines',name=capteur_name))
+
+    fig.update_layout(legend_title_text = f"{indicateur} vs time ")
+    fig.update_xaxes(title_text="Time ")
+    fig.update_yaxes(title_text=indicateur)
+    fig.show()
+
+
+
+def correlation_pm25(df_capteur_entreprise,local_maximum=False,width=10,year=2024,month=3,day=28,hour=11,minute=00,second=00):
+    for capteur in df_capteur_entreprise["sensorId"].unique():
+        if not (str(capteur).endswith("18") or str(capteur).endswith("75")):
+            df_inter = df_capteur_entreprise[
+                    (df_capteur_entreprise["sensorId"]==capteur) & 
+                    (df_capteur_entreprise["Date"]>=datetime(year,month,day,hour,minute,second,tzinfo=timezone(timedelta(hours=1))))
+                                    ].filter(regex='(passage|pm2_5)', axis=1)
+            if local_maximum:
+                df_inter["pm2_5"] = find_peaks(df_inter["pm2_5"],width)
+                local_max_indexes=np.array(argrelextrema(df_inter.pm2_5.values, np.greater_equal,order=20)).flatten()
+                local_max_indexes+=np.array([df_inter.index[0]]*len(local_max_indexes))
+
+                # Optionally, get the indexes around the local maxima
+                window_size = 5  # Adjust window size as needed
+                indexes_around_maxima = []
+                for index in local_max_indexes:
+                    start_index = max(df_inter.index[0], index - window_size)
+                    end_index = min(df_inter.index[-1], index + window_size + 1)
+                    indexes_around_maxima.extend(range(start_index, end_index))
+
+                # Remove duplicates and sort the indexes
+                indexes_around_maxima = sorted(set(indexes_around_maxima))
+                #print(local_max_indexes,df_inter.index[0])
+
+                df_inter["pm2_5"].loc[df_inter.index.isin(indexes_around_maxima)]=1
+                df_inter["pm2_5"].loc[~df_inter.index.isin(indexes_around_maxima)]=0
+                #print(df_inter)
+
+            plt.title(capteur)
+            sns.heatmap(
+                df_inter.corr(),annot=True)
+            plt.show()
