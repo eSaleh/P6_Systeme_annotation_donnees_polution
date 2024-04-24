@@ -67,7 +67,7 @@ def add_labels_to_df(df_capteurs,annotation):
     # met à 1 les lignes dans les colonnes où les events se sont passés
     for date in annotation.keys():
         #print(date)
-        mesure_indexes = associate_measure(date,15,df)
+        mesure_indexes = associate_measure(date,45,df)
         #print(mesure_indexes)
         for mesure_index in mesure_indexes:
           df[annotation[date]].iloc[mesure_index]=1
